@@ -48,6 +48,12 @@ def worddef(word):
     return (word, pos, definition, description, wordfamily, ipa)
 
 
+def Times33(s):
+    h = 0
+    for c in s:
+        h = (h * 33 + ord(c)) & 0xffffffff
+    return h
+
 
 if __name__ == '__main__':
 
@@ -78,7 +84,7 @@ if __name__ == '__main__':
     
     model_name = 'Vocabulary.com 3'
     my_model = genanki.Model(
-        hash(model_name),
+        Times33(model_name),
         model_name,
         fields=[
             {'name': 'word'},
@@ -100,12 +106,16 @@ if __name__ == '__main__':
             }
         ])
 
-    my_deck = genanki.Deck(hash(wordlistfile), wordlistfile)
+    wordlist_base = os.path.basename(wordlistfile)
+    # remove extension
+    deck_name = wordlist_base[:wordlist_base.rfind('.')]
+
+    my_deck = genanki.Deck(Times33(deck_name), deck_name)
 
     for i in items:
         my_deck.add_note(genanki.Note(
             model=my_model,
             fields=i))
 
-    genanki.Package(my_deck).write_to_file(f'{wordlistfile}.apkg')
+    genanki.Package(my_deck).write_to_file(f'{deck_name}.apkg')
             
