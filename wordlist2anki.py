@@ -18,35 +18,34 @@ creates output.apkg for import into anki
 
 
 """
-obtain word pos, definition, description and word family from vocabulary.com
+obtain word pos, definition, description and word family from vocabulary.com and ipa from dictionary.com
 """
 def worddef(word):
 
-    URL = "https://www.vocabulary.com/dictionary/{word}".format(word = word)
-
-    response = requests.get(URL)
+    url = f"https://www.vocabulary.com/dictionary/{word}"
+    response = requests.get(url)
     soup = bs4.BeautifulSoup(response.text, "html.parser")
 
     _ = [x.strip() for x in soup.find('div', class_ = 'definition').text.split('\r\n') if x.strip() != '']
-
     pos = _[0]
     definition = _[1]
-    
-    #definition = '{word} ({pos}): {definition}'.format(word = word,
-    #                                                   pos = pos,
-    #                                                   definition = definition)
 
     _ = soup.find('p', class_ = 'short')
     description = ('' if _ is None else _.text)
-
-    #desc_long = soup.find('p', class_ = 'long').text
 
     family = soup.find('vcom:wordfamily')['data']
     fp = json.loads(family)
     _ = sorted([(x['word'], x.get('parent', ''),x['type'], x['ffreq']) for x in fp if x.get('parent',word) == word and x.get('hw', False) == True], key = lambda x: x[3], reverse = True)
     wordfamily = [x[0] for x in _]
 
-    return (word, pos, definition, description, wordfamily)
+    # ipa
+    url = f"https://www.dictionary.com/browse/{word}"
+    response = requests.get(url)
+    soup = bs4.BeautifulSoup(response.text, "html.parser")
+    _ = soup.find('span', class_ = 'pron-ipa-content')
+    ipa = _.text if _ is not None else ''
+
+    return (word, pos, definition, description, wordfamily, ipa)
 
 
 
@@ -61,46 +60,52 @@ if __name__ == '__main__':
     items = []
             
     for word in wordlist:
-        word, pos, definition, description, wordfamily = worddef(word)
+        if word == '':
+            continue
+        if word.startswith('#'):
+            continue
+        word, pos, definition, description, wordfamily, ipa = worddef(word)
         
         
-        print(word, pos, definition, description, wordfamily, sep='\n')
+        print(word, pos, definition, description, wordfamily, ipa, sep='\n')
 
-        items.append(("{word} ({pos})".format(word = word, pos = pos),
+        items.append((f"{word} ({pos})",
                       definition,
                       description.replace(word, '____').replace(word.capitalize(), '____'),
-                      ' - '.join(wordfamily)))
+                      ' - '.join(wordfamily),
+                      ipa))
 
     
-
+    model_name = 'Vocabulary.com 3'
     my_model = genanki.Model(
-        1607392324,
-        'Vocabulary.com 2',
+        hash(model_name),
+        model_name,
         fields=[
             {'name': 'word'},
             {'name': 'definition'},
             {'name': 'description'},
-            {'name': 'wordfamily'}
+            {'name': 'wordfamily'},
+            {'name': 'ipa'}
         ],
         templates=[
             {
                 'name': 'Forward Card',
-                'qfmt': '{{word}}',
+                'qfmt': '{{word}} {{ipa}}',
                 'afmt': '{{FrontSide}}<hr id="answer">{{definition}}<br><br>{{description}}<br><br>{{wordfamily}}'
             },
             {
                 'name': 'Reverse Card',
                 'qfmt': '{{definition}}<br><br>{{description}}',
-                'afmt': '{{FrontSide}}<hr>{{word}}<br><br>{{wordfamily}}'
+                'afmt': '{{FrontSide}}<hr>{{word}} {{ipa}}<br><br>{{wordfamily}}'
             }
         ])
 
-    my_deck = genanki.Deck(2059400132, "MH Booklet 1")
+    my_deck = genanki.Deck(hash(wordlistfile), wordlistfile)
 
     for i in items:
         my_deck.add_note(genanki.Note(
             model=my_model,
             fields=i))
 
-    genanki.Package(my_deck).write_to_file('output.apkg')
+    genanki.Package(my_deck).write_to_file(f'{wordlistfile}.apkg')
             
