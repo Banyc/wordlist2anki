@@ -62,15 +62,16 @@ if __name__ == '__main__':
     wordlistfile = sys.argv[1]
     with open(wordlistfile) as fh:
         for line in fh:
-            wordlist.append(line.strip())
+            line = line.strip()
+            if line == '':
+                continue
+            if line.startswith('#'):
+                continue
+            wordlist.append(line)
 
     items = []
 
     for word in wordlist:
-        if word == '':
-            continue
-        if word.startswith('#'):
-            continue
         word, pos, definition, description, wordfamily, ipa = worddef(word)
 
         print(word, pos, definition, description, wordfamily, ipa, sep='\n')
