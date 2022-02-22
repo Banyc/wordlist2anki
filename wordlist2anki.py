@@ -1,5 +1,3 @@
-#!/Users/florian/anaconda3/bin/python
-
 # inspired by https://github.com/DanonX2/A-Vocabulary.com-Vocab-List-TO-Anki-Deck-Converter
 
 import bs4
@@ -8,6 +6,7 @@ import json
 import sys
 import os.path
 import genanki
+import sqlite3
 
 __doc__ = """
 usage: wordlist2anki.py wordlist
@@ -16,7 +15,17 @@ creates output.apkg for import into anki
 """
 
 
-def worddef(word):
+class Word:
+    def __init__(self):
+        self.word = ""
+        self.pos = ""
+        self.definition = ""
+        self.description = ""
+        self.wordfamily = []
+        self.ipa = ""
+
+
+def worddef_web(word: str) -> Word:
     """
     obtain word pos, definition, description and word family from vocabulary.com and ipa from dictionary.com
     """
@@ -46,7 +55,50 @@ def worddef(word):
     _ = soup.find('span', class_='pron-ipa-content')
     ipa = _.text if _ is not None else ''
 
-    return (word, pos, definition, description, wordfamily, ipa)
+    w = Word()
+    w.word = word
+    w.pos = pos
+    w.definition = definition
+    w.description = description
+    w.wordfamily = wordfamily
+    w.ipa = ipa
+    return w
+
+
+def worddef_db(conn: sqlite3.Connection, word: str) -> Word:
+    c = conn.cursor()
+    c.execute("SELECT * FROM words WHERE word = ?", (word,))
+    _ = c.fetchone()
+    if _ is None:
+        return None
+    else:
+        w = Word()
+        w.word = _[0]
+        w.pos = _[1]
+        w.definition = _[2]
+        w.description = _[3]
+        w.wordfamily = json.loads(_[4])
+        w.ipa = _[5]
+        return w
+
+
+def save_worddef(word: Word):
+    conn = sqlite3.connect('vocab.db')
+    c = conn.cursor()
+    wordfamily = json.dumps(word.wordfamily)
+    c.execute("INSERT INTO words VALUES (?, ?, ?, ?, ?, ?)",
+              (word.word, word.pos, word.definition, word.description, wordfamily, word.ipa))
+    conn.commit()
+    conn.close()
+
+
+def build_db():
+    conn = sqlite3.connect('vocab.db')
+    c = conn.cursor()
+    c.execute(
+        'CREATE TABLE IF NOT EXISTS words (word TEXT, pos TEXT, definition TEXT, description TEXT, wordfamily TEXT, ipa TEXT)')
+    conn.commit()
+    conn.close()
 
 
 def times33(s):
@@ -57,6 +109,10 @@ def times33(s):
 
 
 if __name__ == '__main__':
+
+    if not os.path.exists('vocab.db'):
+        build_db()
+    conn = sqlite3.connect('vocab.db')
 
     wordlist = []
     wordlistfile = sys.argv[1]
@@ -72,16 +128,19 @@ if __name__ == '__main__':
     items = []
 
     for word in wordlist:
-        word, pos, definition, description, wordfamily, ipa = worddef(word)
-
-        print(word, pos, definition, description, wordfamily, ipa, sep='\n')
+        w = worddef_db(conn, word)
+        if w is None:
+            w = worddef_web(word)
+            save_worddef(w)
+            print(word, w.pos, w.definition, w.description,
+                  w.wordfamily, w.ipa, sep='\n')
 
         items.append((f"{word}",
-                      definition,
-                      description.replace(word, '____').replace(
+                      w.definition,
+                      w.description.replace(word, '____').replace(
                           word.capitalize(), '____'),
-                      ' - '.join(wordfamily),
-                      ipa))
+                      ' - '.join(w.wordfamily),
+                      w.ipa))
 
     model_name = 'Vocabulary.com 3'
     my_model = genanki.Model(
@@ -119,3 +178,5 @@ if __name__ == '__main__':
             fields=i))
 
     genanki.Package(my_deck).write_to_file(f'{deck_name}.apkg')
+
+    conn.close()
