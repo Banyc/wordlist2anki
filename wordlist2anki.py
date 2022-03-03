@@ -1,5 +1,7 @@
 # inspired by https://github.com/DanonX2/A-Vocabulary.com-Vocab-List-TO-Anki-Deck-Converter
 
+import random
+from time import sleep
 import bs4
 import requests
 import json
@@ -7,6 +9,7 @@ import sys
 import os.path
 import genanki
 import sqlite3
+import os
 
 __doc__ = """
 usage: wordlist2anki.py wordlist
@@ -130,7 +133,20 @@ if __name__ == '__main__':
     for word in wordlist:
         w = worddef_db(conn, word)
         if w is None:
-            w = worddef_web(word)
+            while True:
+                try:
+                    w = worddef_web(word)
+                    break
+                except AttributeError as e:
+                    # the word does not exist
+                    print("[error] " + word + ": " + e.__str__())
+                    break
+                except Exception as e:
+                    print("[error] " + e.__str__())
+                    sleep(random.randint(1, 3))
+                    continue
+            if w is None:
+                continue
             save_worddef(w)
             print(word, w.pos, w.definition, w.description,
                   w.wordfamily, w.ipa, sep='\n')
